@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Call Tracker</title>
+<style>
+  :root {
+    --color-background-primary: #1a1a1a;
+    --color-background-secondary: #242424;
+    --color-background-success: #1a3a2a;
+    --color-background-warning: #3a2f1a;
+    --color-background-danger: #3a1f1f;
+    --color-background-info: #1a2a3a;
+    --color-text-primary: #e8e8e8;
+    --color-text-secondary: #999;
+    --color-text-success: #4ade80;
+    --color-text-warning: #fbbf24;
+    --color-text-danger: #f87171;
+    --color-text-info: #60a5fa;
+    --color-border-tertiary: #333;
+    --color-border-danger: #5a2a2a;
+    --border-radius-md: 6px;
+    --border-radius-lg: 8px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: #111;
+    color: var(--color-text-primary);
+    margin: 0 auto;
+    padding: 2rem;
+    max-width: 1100px;
+  }
+  .header-row { display: flex; justify-content: space-between; align-items: center; margin: 0 0 1.5rem; }
+  h1 { font-size: 22px; font-weight: 500; margin: 0; }
+  .header-actions { display: flex; gap: 8px; }
+  input, select, button {
+    background: var(--color-background-secondary);
+    color: var(--color-text-primary);
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-md);
+    padding: 8px 10px;
+    font-size: 14px;
+    font-family: inherit;
+  }
+  button { cursor: pointer; }
+  button:hover { background: #2e2e2e; }
+  .small-btn { font-size: 12px; padding: 6px 10px; }
+  .footer { margin-top: 2rem; font-size: 11px; color: var(--color-text-secondary); text-align: center; }
+  .footer a { color: var(--color-text-secondary); }
+</style>
+</head>
+<body>
+
+<div class="header-row">
+  <h1>Call Tracker</h1>
+  <div class="header-actions">
+    <button class="small-btn" onclick="exportData()">Export</button>
+    <button class="small-btn" onclick="document.getElementById('import-file').click()">Import</button>
+    <input type="file" id="import-file" accept="application/json" style="display:none" onchange="importData(event)" />
+  </div>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 1.5rem;">
+  <div style="background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 1rem; text-align: center;">
+    <div style="font-size: 13px; color: var(--color-text-secondary); margin-bottom: 4px;">Total</div>
+    <div style="font-size: 24px; font-weight: 500;" id="stat-total">0</div>
+  </div>
+  <div style="background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 1rem; text-align: center;">
+    <div style="font-size: 13px; color: var(--color-text-secondary); margin-bottom: 4px;">Called</div>
+    <div style="font-size: 24px; font-weight: 500;" id="stat-called">0</div>
+  </div>
+  <div style="background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 1rem; text-align: center;">
+    <div style="font-size: 13px; color: var(--color-text-secondary); margin-bottom: 4px;">Interested</div>
+    <div style="font-size: 24px; font-weight: 500; color: var(--color-text-success);" id="stat-interested">0</div>
+  </div>
+  <div style="background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 1rem; text-align: center;">
+    <div style="font-size: 13px; color: var(--color-text-secondary); margin-bottom: 4px;">Closed</div>
+    <div style="font-size: 24px; font-weight: 500; color: var(--color-text-info);" id="stat-closed">0</div>
+  </div>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 8px; margin-bottom: 1rem; align-items: end;">
+  <div>
+    <div style="font-size: 12px; color: var(--color-text-secondary); margin-bottom: 4px;">Business name</div>
+    <input type="text" id="input-name" placeholder="e.g. Austin Plumbing Co." style="width: 100%;" />
+  </div>
+  <div>
+    <div style="font-size: 12px; color: var(--color-text-secondary); margin-bottom: 4px;">Phone</div>
+    <input type="text" id="input-phone" placeholder="+1 512 555 0100" style="width: 100%;" />
+  </div>
+  <div>
+    <div style="font-size: 12px; color: var(--color-text-secondary); margin-bottom: 4px;">Website quality</div>
+    <select id="input-site" style="width: 100%;">
+      <option value="none">No website</option>
+      <option value="bad">Bad / outdated</option>
+      <option value="ok">Decent</option>
+    </select>
+  </div>
+  <button onclick="addLead()" style="height: 36px; padding: 0 16px; white-space: nowrap;">+ Add</button>
+</div>
+
+<div id="lead-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
+
+<div id="empty-state" style="text-align: center; padding: 2rem; color: var(--color-text-secondary); font-size: 14px;">
+  Add your first lead above — aim for 20 before you start calling
+</div>
+
+<div class="footer">
+  Data is stored locally in your browser and never leaves this device.
+</div>
+
+<script>
+const STORAGE_KEY = 'call-tracker-leads-v1';
+let leads = [];
+
+const statusConfig = {
+  pending:    { label: 'Not called',     bg: 'var(--color-background-secondary)', color: 'var(--color-text-secondary)' },
+  no_answer:  { label: 'No answer',      bg: 'var(--color-background-warning)',   color: 'var(--color-text-warning)' },
+  not_int:    { label: 'Not interested', bg: 'var(--color-background-danger)',    color: 'var(--color-text-danger)' },
+  interested: { label: 'Interested',     bg: 'var(--color-background-success)',   color: 'var(--color-text-success)' },
+  closed:     { label: 'Closed',         bg: 'var(--color-background-info)',      color: 'var(--color-text-info)' },
+};
+
+function loadLeads() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    leads = raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    leads = [];
+  }
+  render();
+}
+
+function persist() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(leads));
+}
+
+function addLead() {
+  const name = document.getElementById('input-name').value.trim();
+  const phone = document.getElementById('input-phone').value.trim();
+  const site = document.getElementById('input-site').value;
+  if (!name) return;
+  const lead = {
+    id: Date.now() + Math.floor(Math.random() * 1000),
+    name, phone, site,
+    status: 'pending',
+    note: '',
+  };
+  leads.push(lead);
+  persist();
+  document.getElementById('input-name').value = '';
+  document.getElementById('input-phone').value = '';
+  render();
+}
+
+function setStatus(id, status) {
+  leads = leads.map(l => l.id === id ? { ...l, status } : l);
+  persist();
+  render();
+}
+
+function removeLead(id) {
+  leads = leads.filter(l => l.id !== id);
+  persist();
+  render();
+}
+
+let noteTimers = {};
+function updateNote(id, val) {
+  leads = leads.map(l => l.id === id ? { ...l, note: val } : l);
+  clearTimeout(noteTimers[id]);
+  noteTimers[id] = setTimeout(persist, 300);
+}
+
+function exportData() {
+  const blob = new Blob([JSON.stringify(leads, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `call-tracker-${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importData(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const imported = JSON.parse(e.target.result);
+      if (!Array.isArray(imported)) throw new Error('Invalid format');
+      if (leads.length && !confirm(`Replace ${leads.length} existing leads with ${imported.length} imported leads?`)) return;
+      leads = imported;
+      persist();
+      render();
+    } catch (err) {
+      alert('Could not import: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+function updateStats() {
+  document.getElementById('stat-total').textContent = leads.length;
+  document.getElementById('stat-called').textContent = leads.filter(l => l.status !== 'pending').length;
+  document.getElementById('stat-interested').textContent = leads.filter(l => l.status === 'interested').length;
+  document.getElementById('stat-closed').textContent = leads.filter(l => l.status === 'closed').length;
+}
+
+function siteLabel(s) {
+  return s === 'none' ? 'No website' : s === 'bad' ? 'Bad site' : 'Decent site';
+}
+
+function escapeHtml(s) {
+  return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function render() {
+  updateStats();
+  const list = document.getElementById('lead-list');
+  const empty = document.getElementById('empty-state');
+  empty.style.display = leads.length ? 'none' : 'block';
+
+  list.innerHTML = leads.map(l => {
+    const sc = statusConfig[l.status] || statusConfig.pending;
+    const statusOpts = Object.entries(statusConfig).map(([k, v]) =>
+      `<option value="${k}" ${l.status === k ? 'selected' : ''}>${v.label}</option>`
+    ).join('');
+    return `
+    <div style="background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); padding: 12px 16px; display: grid; grid-template-columns: 1fr auto auto auto; gap: 8px; align-items: center;">
+      <div>
+        <div style="font-weight: 500; font-size: 14px;">${escapeHtml(l.name)}</div>
+        <div style="font-size: 12px; color: var(--color-text-secondary); margin-top: 2px;">${escapeHtml(l.phone) || 'No phone'} &middot; ${siteLabel(l.site)}</div>
+        <input type="text" placeholder="Notes..." value="${escapeHtml(l.note)}" oninput="updateNote(${l.id}, this.value)" style="margin-top: 6px; width: 100%; font-size: 12px; padding: 4px 8px; height: 28px;" />
+      </div>
+      <span style="font-size: 11px; padding: 3px 10px; border-radius: var(--border-radius-md); background: ${sc.bg}; color: ${sc.color}; white-space: nowrap;">${sc.label}</span>
+      <select onchange="setStatus(${l.id}, this.value)" style="font-size: 12px; padding: 2px 6px; height: 28px;">${statusOpts}</select>
+      <button onclick="removeLead(${l.id})" style="font-size: 12px; padding: 0 10px; height: 28px; color: var(--color-text-danger); border-color: var(--color-border-danger);">✕</button>
+    </div>`;
+  }).join('');
+}
+
+document.getElementById('input-name').addEventListener('keydown', e => { if (e.key === 'Enter') addLead(); });
+document.getElementById('input-phone').addEventListener('keydown', e => { if (e.key === 'Enter') addLead(); });
+
+loadLeads();
+</script>
+</body>
+</html>
